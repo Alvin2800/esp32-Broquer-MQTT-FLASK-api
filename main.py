@@ -2,6 +2,8 @@ from flask import Flask, jsonify
 from datetime import datetime
 import mysql.connector
 import os
+import json
+import paho.mqtt.client as mqtt
 
 app = Flask(__name__)
 
@@ -13,12 +15,22 @@ db_config = {
     "database": os.getenv("MYSQLDATABASE")
 }
 
+# Variables globales pour /status
 distance = 0.0
 alert = 0
 
+# Config MQTT
+MQTT_BROKER = "broker.hivemq.com"
+MQTT_PORT = 1883
+MQTT_TOPIC = "alvin/iot/fuel_level"
+
+
+# Connexion à MySQL
 def db_connection():
     return mysql.connector.connect(**db_config)
 
+
+# Création de la table dédiée MQTT
 def init_db():
     try:
         conn = db_connection()
@@ -36,14 +48,14 @@ def init_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("table MQTT prête", flush=True)
+        print("✅ table MQTT prête", flush=True)
 
     except Exception as e:
-        print("erreur base donnée MQTT", e, flush=True)
+        print("❌ erreur base donnée MQTT :", e, flush=True)
 
-init_db()
 
-def insert_mqtt_data(timestamp, distance, alert):
+# Insertion des données MQTT
+def insert_mqtt_data(timestamp, distance_value, alert_value):
     try:
         conn = db_connection()
         cursor = conn.cursor()
@@ -51,18 +63,71 @@ def insert_mqtt_data(timestamp, distance, alert):
         cursor.execute("""
             INSERT INTO log_distance_mqtt (timestamp, distance, alert)
             VALUES (%s, %s, %s)
-        """, (timestamp, distance, alert))
+        """, (timestamp, distance_value, alert_value))
 
         conn.commit()
         cursor.close()
         conn.close()
 
+        print("✅ données MQTT insérées en base", flush=True)
+
     except Exception as e:
-        print("erreur insertion MQTT", e, flush=True)
+        print("❌ erreur insertion MQTT :", e, flush=True)
+
+
+# Callback MQTT : quand un message arrive
+def on_message(client, userdata, msg):
+    global distance, alert
+
+    try:
+        payload = msg.payload.decode()
+        print("📩 message MQTT brut reçu :", payload, flush=True)
+
+        data = json.loads(payload)
+
+        distance = float(data.get("distance", 0))
+        alert = int(data.get("alert", 0))
+        timestamp = datetime.now()
+
+        insert_mqtt_data(timestamp, distance, alert)
+
+        print("📡 MQTT reçu et traité :", {
+            "distance": distance,
+            "alert": alert,
+            "timestamp": str(timestamp)
+        }, flush=True)
+
+    except Exception as e:
+        print("❌ erreur traitement MQTT :", e, flush=True)
+
+
+# Démarrage MQTT subscriber
+def start_mqtt():
+    try:
+        client = mqtt.Client()
+        client.on_message = on_message
+
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        client.subscribe(MQTT_TOPIC)
+
+        print(f"✅ connecté au broker MQTT : {MQTT_BROKER}", flush=True)
+        print(f"✅ abonné au topic : {MQTT_TOPIC}", flush=True)
+
+        client.loop_start()
+
+    except Exception as e:
+        print("❌ erreur connexion MQTT :", e, flush=True)
+
+
+# Initialisation
+init_db()
+start_mqtt()
+
 
 @app.route("/")
 def home():
     return "MQTT API IS RUNNING"
+
 
 @app.route("/status")
 def status():
@@ -70,6 +135,7 @@ def status():
         "distance": distance,
         "alert": alert
     })
+
 
 @app.route("/logs")
 def logs():
@@ -99,8 +165,9 @@ def logs():
         return jsonify(log)
 
     except Exception as e:
-        print("erreur logs MQTT", e, flush=True)
+        print("❌ erreur logs MQTT :", e, flush=True)
         return jsonify({"erreur": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
