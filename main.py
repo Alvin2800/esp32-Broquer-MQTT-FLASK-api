@@ -20,7 +20,7 @@ distance = 0.0
 alert = 0
 
 # Config MQTT
-MQTT_BROKER = "broker.hivemq.com"
+MQTT_BROKER = "test.mosquitto.org"
 MQTT_PORT = 1883
 MQTT_TOPIC = "alvin/iot/fuel_level"
 
