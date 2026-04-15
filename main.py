@@ -60,7 +60,7 @@ def insert_data(timestamp, distance, alert):
     cursor.close()
     conn.close()
 
-def detect_anomaly(current, previous, threshold=20):
+def detect_anomaly(current, previous, threshold=50):
     if previous is None:
         return False
     return abs(current - previous) > threshold
