@@ -22,7 +22,7 @@ def db_connection():
 # MQTT
 MQTT_BROKER = "test.mosquitto.org"
 MQTT_PORT = 1883
-MQTT_TOPIC = "alvin/iot/fluel_level"
+MQTT_TOPIC = "alvin/iot/fuel_level"
 
 distance = 0.0
 alert = 0
