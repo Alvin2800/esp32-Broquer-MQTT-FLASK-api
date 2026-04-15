@@ -7,7 +7,9 @@ import paho.mqtt.client as mqtt
 
 app = Flask(__name__)
 
-# DB config
+# =========================
+# CONFIG DB
+# =========================
 db_config = {
     "host": os.getenv("MYSQLHOST"),
     "port": int(os.getenv("MYSQLPORT", 3306)),
@@ -19,118 +21,224 @@ db_config = {
 def db_connection():
     return mysql.connector.connect(**db_config)
 
-# MQTT
+# =========================
+# CONFIG MQTT
+# =========================
 MQTT_BROKER = "test.mosquitto.org"
 MQTT_PORT = 1883
 MQTT_TOPIC = "alvin/iot/fuel_level"
 
+# =========================
+# VARIABLES GLOBALES
+# =========================
 distance = 0.0
 alert = 0
+event_type = "NORMAL"
+
 last_distance = None
+event_active = False
+reference_distance = None
+event_counter = 0
 
+# =========================
+# INIT DB
+# =========================
 def init_db():
-    conn = db_connection()
-    cursor = conn.cursor()
+    try:
+        conn = db_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS log_distance_mqtt(
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        timestamp DATETIME NOT NULL,
-        distance FLOAT NOT NULL,
-        alert INT NOT NULL
-    )
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS log_distance_mqtt (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            timestamp DATETIME NOT NULL,
+            distance FLOAT NOT NULL,
+            alert INT NOT NULL,
+            event_type VARCHAR(50) NOT NULL
+        )
+        """)
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ table MQTT prête", flush=True)
+
+    except Exception as e:
+        print("❌ erreur init DB :", e, flush=True)
 
 init_db()
 
-def insert_data(timestamp, distance, alert):
-    conn = db_connection()
-    cursor = conn.cursor()
+# =========================
+# INSERT DATA
+# =========================
+def insert_data(timestamp, distance_value, alert_value, event_type_value):
+    try:
+        conn = db_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO log_distance_mqtt (timestamp, distance, alert)
-    VALUES (%s, %s, %s)
-    """, (timestamp, distance, alert))
+        cursor.execute("""
+        INSERT INTO log_distance_mqtt (timestamp, distance, alert, event_type)
+        VALUES (%s, %s, %s, %s)
+        """, (timestamp, distance_value, alert_value, event_type_value))
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+        conn.commit()
+        cursor.close()
+        conn.close()
 
-def detect_anomaly(current, previous, threshold=50):
-    if previous is None:
-        return False
-    return abs(current - previous) > threshold
+        print("✅ donnée insérée en DB", flush=True)
 
+    except Exception as e:
+        print("❌ erreur insertion DB :", e, flush=True)
+
+# =========================
+# IA METIER
+# =========================
+def classify_event(current_distance):
+    global last_distance, event_active, reference_distance, event_counter, event_type
+
+    # première mesure
+    if last_distance is None:
+        last_distance = current_distance
+        event_type = "NORMAL"
+        return event_type
+
+    # aucun événement en cours
+    if not event_active:
+        diff = abs(current_distance - last_distance)
+
+        if diff >= 100:
+            event_active = True
+            reference_distance = last_distance
+            event_counter = 0
+            event_type = "SUSPECT_EVENT"
+        else:
+            event_type = "NORMAL"
+
+    # événement en cours d'observation
+    else:
+        event_counter += 1
+
+        # retour proche de la valeur avant chute
+        if abs(current_distance - reference_distance) <= 20:
+            event_type = "FAKE_ANOMALY"
+            event_active = False
+            reference_distance = None
+            event_counter = 0
+
+        # après 15 mesures sans retour
+        elif event_counter >= 15:
+            event_type = "PROBABLE_THEFT"
+            event_active = False
+            reference_distance = None
+            event_counter = 0
+
+        else:
+            event_type = "SUSPECT_EVENT"
+
+    last_distance = current_distance
+    return event_type
+
+# =========================
+# CALLBACK MQTT
+# =========================
 def on_message(client, userdata, msg):
-    global distance, alert, last_distance
+    global distance, alert, event_type
 
     try:
         payload = msg.payload.decode()
+        print("📩 message MQTT brut reçu :", payload, flush=True)
+
         data = json.loads(payload)
 
         distance = float(data.get("distance", 0))
         alert = int(data.get("alert", 0))
         timestamp = datetime.now()
 
-        anomaly = detect_anomaly(distance, last_distance)
-        last_distance = distance
+        event_type = classify_event(distance)
 
-        insert_data(timestamp, distance, alert)
+        insert_data(timestamp, distance, alert, event_type)
 
-        print("DATA:", distance, "ANOMALY:", anomaly)
+        print("📡 MQTT reçu et traité :", {
+            "distance": distance,
+            "alert": alert,
+            "event_type": event_type,
+            "timestamp": str(timestamp)
+        }, flush=True)
 
     except Exception as e:
-        print("Erreur:", e)
+        print("❌ erreur traitement MQTT :", e, flush=True)
 
+# =========================
+# START MQTT
+# =========================
 def start_mqtt():
-    client = mqtt.Client()
-    client.on_message = on_message
+    try:
+        client = mqtt.Client()
+        client.on_message = on_message
 
-    client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    client.subscribe(MQTT_TOPIC)
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        client.subscribe(MQTT_TOPIC)
 
-    client.loop_start()
+        print(f"✅ connecté au broker MQTT : {MQTT_BROKER}", flush=True)
+        print(f"✅ abonné au topic : {MQTT_TOPIC}", flush=True)
+
+        client.loop_start()
+
+    except Exception as e:
+        print("❌ erreur connexion MQTT :", e, flush=True)
 
 start_mqtt()
 
+# =========================
+# ROUTES FLASK
+# =========================
 @app.route("/")
 def home():
-    return "API running"
+    return "MQTT API running"
 
 @app.route("/status")
 def status():
-    return jsonify({"distance": distance, "alert": alert})
+    return jsonify({
+        "distance": distance,
+        "alert": alert,
+        "event_type": event_type
+    })
 
 @app.route("/logs")
 def logs():
-    conn = db_connection()
-    cursor = conn.cursor()
+    try:
+        conn = db_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT timestamp, distance, alert 
-    FROM log_distance_mqtt 
-    ORDER BY timestamp DESC 
-    LIMIT 100
-    """)
+        cursor.execute("""
+        SELECT timestamp, distance, alert, event_type
+        FROM log_distance_mqtt
+        ORDER BY timestamp DESC
+        LIMIT 100
+        """)
 
-    rows = cursor.fetchall()
+        rows = cursor.fetchall()
 
-    cursor.close()
-    conn.close()
+        cursor.close()
+        conn.close()
 
-    data = []
-    for row in rows:
-        data.append({
-            "timestamp": str(row[0]),
-            "distance": row[1],
-            "alert": row[2]
-        })
+        data = []
+        for row in rows:
+            data.append({
+                "timestamp": str(row[0]),
+                "distance": row[1],
+                "alert": row[2],
+                "event_type": row[3]
+            })
 
-    return jsonify(data)
+        return jsonify(data)
 
+    except Exception as e:
+        print("❌ erreur logs :", e, flush=True)
+        return jsonify({"error": str(e)}), 500
+
+# =========================
+# RUN
+# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
