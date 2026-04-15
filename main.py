@@ -34,6 +34,7 @@ MQTT_TOPIC = "alvin/iot/fuel_level"
 distance = 0.0
 alert = 0
 event_type = "NORMAL"
+event_direction = None
 
 last_distance = None
 event_active = False
@@ -105,7 +106,7 @@ def insert_data(timestamp, distance_value, alert_value, event_type_value):
 # IA METIER
 # =========================
 def classify_event(current_distance):
-    global last_distance, event_active, reference_distance, event_counter, event_type
+    global last_distance, event_active, reference_distance, event_counter, event_type, event_direction
 
     # première mesure
     if last_distance is None:
@@ -115,13 +116,24 @@ def classify_event(current_distance):
 
     # aucun événement en cours
     if not event_active:
-        diff = abs(current_distance - last_distance)
+        diff = current_distance - last_distance
 
-        if diff >= 100:
+        # chute brutale
+        if diff <= -100:
             event_active = True
             reference_distance = last_distance
             event_counter = 0
+            event_direction = "DROP"
             event_type = "SUSPECT_EVENT"
+
+        # hausse brutale
+        elif diff >= 100:
+            event_active = True
+            reference_distance = last_distance
+            event_counter = 0
+            event_direction = "RISE"
+            event_type = "SUSPECT_EVENT"
+
         else:
             event_type = "NORMAL"
 
@@ -129,19 +141,25 @@ def classify_event(current_distance):
     else:
         event_counter += 1
 
-        # retour proche de la valeur avant chute
+        # retour proche de la valeur avant événement
         if abs(current_distance - reference_distance) <= 20:
             event_type = "FAKE_ANOMALY"
             event_active = False
             reference_distance = None
             event_counter = 0
+            event_direction = None
 
         # après 15 mesures sans retour
         elif event_counter >= 15:
-            event_type = "PROBABLE_THEFT"
+            if event_direction == "DROP":
+                event_type = "PROBABLE_THEFT"
+            elif event_direction == "RISE":
+                event_type = "REFUEL"
+
             event_active = False
             reference_distance = None
             event_counter = 0
+            event_direction = None
 
         else:
             event_type = "SUSPECT_EVENT"
