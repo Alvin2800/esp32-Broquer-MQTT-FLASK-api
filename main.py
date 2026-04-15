@@ -37,7 +37,7 @@ def init_db():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS log_distance_mqtt(
                        id INT AUTO_INCREMENT PRIMARY KEY,
-                       timestamp DATETIME NOT NULL
+                       timestamp DATETIME NOT NULL,
                        distance float Not null,
                        alerte int Not null
                        )
