@@ -83,7 +83,7 @@ def on_message(client, userdata, msg):
         data = json.loads(payload)
 
         distance = float(data.get("distance", 0))
-        alert = int(data.get("alert", 0))
+        alert = int(data.get("alerte", 0))
         timestamp = datetime.now()
 
         # 🔥 IA ici
@@ -93,7 +93,7 @@ def on_message(client, userdata, msg):
         last_distance = distance
 
         # stockage (tu peux ajouter anomaly en DB plus tard)
-        insert_data(timestamp, distance, alert)
+        insert_data(timestamp, distance, alerte)
 
         print("📡 DATA :", {
             "distance": distance,
