@@ -48,15 +48,26 @@ def init_db():
         conn = db_connection()
         cursor = conn.cursor()
 
+        # création table si elle n'existe pas
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS log_distance_mqtt (
             id INT AUTO_INCREMENT PRIMARY KEY,
             timestamp DATETIME NOT NULL,
             distance FLOAT NOT NULL,
-            alert INT NOT NULL,
-            event_type VARCHAR(50) NOT NULL
+            alert INT NOT NULL
         )
         """)
+
+        # vérifie si la colonne event_type existe
+        cursor.execute("SHOW COLUMNS FROM log_distance_mqtt LIKE 'event_type'")
+        column_exists = cursor.fetchone()
+
+        if not column_exists:
+            cursor.execute("""
+            ALTER TABLE log_distance_mqtt
+            ADD COLUMN event_type VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
+            """)
+            print("✅ colonne event_type ajoutée", flush=True)
 
         conn.commit()
         cursor.close()
@@ -114,7 +125,7 @@ def classify_event(current_distance):
         else:
             event_type = "NORMAL"
 
-    # événement en cours d'observation
+    # événement en cours
     else:
         event_counter += 1
 
