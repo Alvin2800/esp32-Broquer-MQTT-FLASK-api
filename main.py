@@ -34,12 +34,12 @@ MQTT_TOPIC = "alvin/iot/fuel_level"
 distance = 0.0
 alert = 0
 event_type = "NORMAL"
-event_direction = None
 
 last_distance = None
 event_active = False
 reference_distance = None
 event_counter = 0
+event_direction = None  # "RISE" ou "DROP"
 
 # =========================
 # INIT DB
@@ -49,7 +49,6 @@ def init_db():
         conn = db_connection()
         cursor = conn.cursor()
 
-        # création table si elle n'existe pas
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS log_distance_mqtt (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -59,11 +58,9 @@ def init_db():
         )
         """)
 
-        # vérifie si la colonne event_type existe
+        # ajoute event_type si absent
         cursor.execute("SHOW COLUMNS FROM log_distance_mqtt LIKE 'event_type'")
-        column_exists = cursor.fetchone()
-
-        if not column_exists:
+        if not cursor.fetchone():
             cursor.execute("""
             ALTER TABLE log_distance_mqtt
             ADD COLUMN event_type VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
@@ -108,30 +105,34 @@ def insert_data(timestamp, distance_value, alert_value, event_type_value):
 def classify_event(current_distance):
     global last_distance, event_active, reference_distance, event_counter, event_type, event_direction
 
+    BRUTAL_THRESHOLD = 100
+    RETURN_THRESHOLD = 20
+    OBSERVATION_WINDOW = 15
+
     # première mesure
     if last_distance is None:
         last_distance = current_distance
         event_type = "NORMAL"
         return event_type
 
+    diff = current_distance - last_distance
+
     # aucun événement en cours
     if not event_active:
-        diff = current_distance - last_distance
-
-        # chute brutale
-        if diff <= -100:
-            event_active = True
-            reference_distance = last_distance
-            event_counter = 0
-            event_direction = "DROP"
-            event_type = "SUSPECT_EVENT"
-
         # hausse brutale
-        elif diff >= 100:
+        if diff >= BRUTAL_THRESHOLD:
             event_active = True
             reference_distance = last_distance
             event_counter = 0
             event_direction = "RISE"
+            event_type = "SUSPECT_EVENT"
+
+        # baisse brutale
+        elif diff <= -BRUTAL_THRESHOLD:
+            event_active = True
+            reference_distance = last_distance
+            event_counter = 0
+            event_direction = "DROP"
             event_type = "SUSPECT_EVENT"
 
         else:
@@ -142,19 +143,21 @@ def classify_event(current_distance):
         event_counter += 1
 
         # retour proche de la valeur avant événement
-        if abs(current_distance - reference_distance) <= 20:
+        if abs(current_distance - reference_distance) <= RETURN_THRESHOLD:
             event_type = "FAKE_ANOMALY"
             event_active = False
             reference_distance = None
             event_counter = 0
             event_direction = None
 
-        # après 15 mesures sans retour
-        elif event_counter >= 15:
-            if event_direction == "DROP":
+        # fin de fenêtre d'observation
+        elif event_counter >= OBSERVATION_WINDOW:
+            if event_direction == "RISE":
                 event_type = "PROBABLE_THEFT"
-            elif event_direction == "RISE":
+            elif event_direction == "DROP":
                 event_type = "REFUEL"
+            else:
+                event_type = "NORMAL"
 
             event_active = False
             reference_distance = None
@@ -219,7 +222,7 @@ def start_mqtt():
 start_mqtt()
 
 # =========================
-# ROUTES FLASK
+# ROUTES
 # =========================
 @app.route("/")
 def home():
@@ -247,7 +250,6 @@ def logs():
         """)
 
         rows = cursor.fetchall()
-
         cursor.close()
         conn.close()
 
