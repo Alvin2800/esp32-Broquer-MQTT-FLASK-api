@@ -59,26 +59,32 @@ def init_db():
         )
         """)
 
-        # ajoute event_type si absent
+        # 🔹 vérifier event_type
         cursor.execute("SHOW COLUMNS FROM log_distance_mqtt LIKE 'event_type'")
         if not cursor.fetchone():
             cursor.execute("""
             ALTER TABLE log_distance_mqtt
             ADD COLUMN event_type VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
-            ADD COLUMN event VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
-            
             """)
-            print("✅ colonne event_type et event ajoutée", flush=True)
+            print("✅ colonne event_type ajoutée", flush=True)
+
+        # 🔹 vérifier event
+        cursor.execute("SHOW COLUMNS FROM log_distance_mqtt LIKE 'event'")
+        if not cursor.fetchone():
+            cursor.execute("""
+            ALTER TABLE log_distance_mqtt
+            ADD COLUMN event VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
+            """)
+            print("✅ colonne event ajoutée", flush=True)
 
         conn.commit()
         cursor.close()
         conn.close()
+
         print("✅ table MQTT prête", flush=True)
 
     except Exception as e:
         print("❌ erreur init DB :", e, flush=True)
-
-init_db()
 
 # =========================
 # INSERT DATA
@@ -255,7 +261,7 @@ def logs():
         cursor = conn.cursor()
 
         cursor.execute("""
-        SELECT timestamp, distance, alert,event
+        SELECT timestamp, distance, alert, event_type, event
         FROM log_distance_mqtt
         ORDER BY timestamp DESC
         LIMIT 100
@@ -271,7 +277,8 @@ def logs():
                 "timestamp": str(row[0]),
                 "distance": row[1],
                 "alert": row[2],
-                 "event": row[3]
+                "event_type": row[3],
+                 "event": row[4]
             })
 
         return jsonify(data)
