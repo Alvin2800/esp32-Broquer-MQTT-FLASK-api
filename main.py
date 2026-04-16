@@ -177,6 +177,7 @@ def classify_event(current_distance):
 
         else:
             event_type = "SUSPECT_EVENT"
+            event="NORMAL"
 
     last_distance = current_distance
     return event_type, event
