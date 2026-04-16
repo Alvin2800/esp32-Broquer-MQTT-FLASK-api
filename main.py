@@ -251,7 +251,8 @@ def status():
     return jsonify({
         "distance": distance,
         "alert": alert,
-        "event_type": event_type
+        "event_type": event_type,
+        "event": event
     })
 
 @app.route("/logs")
