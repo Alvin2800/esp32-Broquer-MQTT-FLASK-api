@@ -271,7 +271,7 @@ def logs():
                 "timestamp": str(row[0]),
                 "distance": row[1],
                 "alert": row[2],
-                 event": row[3]
+                 "event": row[3]
             })
 
         return jsonify(data)
