@@ -278,7 +278,7 @@ def logs():
                 "timestamp": str(row[0]),
                 "distance": row[1],
                 "alert": row[2],
-                "event_type": row[3]
+                "event_type": row[3],
                 "event": row[4]
                 
             })
