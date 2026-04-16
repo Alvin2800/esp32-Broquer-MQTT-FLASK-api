@@ -89,7 +89,7 @@ def init_db():
 # =========================
 # INSERT DATA
 # =========================
-def insert_data(timestamp, distance_value, alert_value, event_type_value,event):
+def insert_data(timestamp, distance_value, alert_value, event_type_value, event):
     try:
         conn = db_connection()
         cursor = conn.cursor()
@@ -112,7 +112,7 @@ def insert_data(timestamp, distance_value, alert_value, event_type_value,event):
 # IA METIER
 # =========================
 def classify_event(current_distance):
-    global last_distance, event_active, reference_distance, event_counter, event_type, event_direction
+    global last_distance, event_active, reference_distance, event_counter, event_type, event_direction, event
 
     BRUTAL_THRESHOLD = 100
     RETURN_THRESHOLD = 20
@@ -204,7 +204,7 @@ def on_message(client, userdata, msg):
         alert = int(data.get("alert", 0))
         timestamp = datetime.now()
 
-        event_type = classify_event(distance)
+        event_type, event = classify_event(distance)
 
         insert_data(timestamp, distance, alert, event_type,event)
 
