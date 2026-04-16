@@ -40,6 +40,7 @@ event_active = False
 reference_distance = None
 event_counter = 0
 event_direction = None  # "RISE" ou "DROP"
+event="NORMAL"
 
 # =========================
 # INIT DB
@@ -64,8 +65,10 @@ def init_db():
             cursor.execute("""
             ALTER TABLE log_distance_mqtt
             ADD COLUMN event_type VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
+            ADD COLUMN event VARCHAR(50) NOT NULL DEFAULT 'NORMAL'
+            
             """)
-            print("✅ colonne event_type ajoutée", flush=True)
+            print("✅ colonne event_type et event ajoutée", flush=True)
 
         conn.commit()
         cursor.close()
@@ -80,15 +83,15 @@ init_db()
 # =========================
 # INSERT DATA
 # =========================
-def insert_data(timestamp, distance_value, alert_value, event_type_value):
+def insert_data(timestamp, distance_value, alert_value, event_type_value,event):
     try:
         conn = db_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-        INSERT INTO log_distance_mqtt (timestamp, distance, alert, event_type)
-        VALUES (%s, %s, %s, %s)
-        """, (timestamp, distance_value, alert_value, event_type_value))
+        INSERT INTO log_distance_mqtt (timestamp, distance, alert, event_type,event)
+        VALUES (%s, %s, %s, %s,%s)
+        """, (timestamp, distance_value, alert_value, event_type_value,event))
 
         conn.commit()
         cursor.close()
@@ -113,7 +116,8 @@ def classify_event(current_distance):
     if last_distance is None:
         last_distance = current_distance
         event_type = "NORMAL"
-        return event_type
+        event= "NORMAL"
+        return event_type, event
 
     diff = current_distance - last_distance
 
@@ -126,6 +130,7 @@ def classify_event(current_distance):
             event_counter = 0
             event_direction = "RISE"
             event_type = "SUSPECT_EVENT"
+            event="NORMAL"
 
         # baisse brutale
         elif diff <= -BRUTAL_THRESHOLD:
@@ -134,9 +139,11 @@ def classify_event(current_distance):
             event_counter = 0
             event_direction = "DROP"
             event_type = "SUSPECT_EVENT"
+            event="NORMAL"
 
         else:
             event_type = "NORMAL"
+            event="NORMAL"
 
     # événement en cours
     else:
@@ -145,6 +152,7 @@ def classify_event(current_distance):
         # retour proche de la valeur avant événement
         if abs(current_distance - reference_distance) <= RETURN_THRESHOLD:
             event_type = "FAKE_ANOMALY"
+            event="NORMAL"
             event_active = False
             reference_distance = None
             event_counter = 0
@@ -154,10 +162,13 @@ def classify_event(current_distance):
         elif event_counter >= OBSERVATION_WINDOW:
             if event_direction == "RISE":
                 event_type = "PROBABLE_THEFT"
+                event="PROBABLE_THEFT"
             elif event_direction == "DROP":
                 event_type = "REFUEL"
+                event="REFUEL"
             else:
                 event_type = "NORMAL"
+                event="NORMAL"
 
             event_active = False
             reference_distance = None
@@ -168,7 +179,7 @@ def classify_event(current_distance):
             event_type = "SUSPECT_EVENT"
 
     last_distance = current_distance
-    return event_type
+    return event_type, event
 
 # =========================
 # CALLBACK MQTT
@@ -188,7 +199,7 @@ def on_message(client, userdata, msg):
 
         event_type = classify_event(distance)
 
-        insert_data(timestamp, distance, alert, event_type)
+        insert_data(timestamp, distance, alert, event_type,event)
 
         print("📡 MQTT reçu et traité :", {
             "distance": distance,
