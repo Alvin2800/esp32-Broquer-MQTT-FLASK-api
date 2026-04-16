@@ -256,7 +256,7 @@ def logs():
         data = []
         for row in rows:
             data.append({
-                "DATE": str(row[0]),
+                "timestamp": str(row[0]),
                 "distance": row[1],
                 "alert": row[2],
             })
