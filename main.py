@@ -261,7 +261,7 @@ def logs():
         cursor = conn.cursor()
 
         cursor.execute("""
-        SELECT timestamp, distance, alert, event_type, event
+        SELECT timestamp, distance, alert, event
         FROM log_distance_mqtt
         ORDER BY timestamp DESC
         LIMIT 100
@@ -277,8 +277,8 @@ def logs():
                 "timestamp": str(row[0]),
                 "distance": row[1],
                 "alert": row[2],
-                "event_type": row[3],
-                 "event": row[4]
+                "event": row[3]
+                
             })
 
         return jsonify(data)
