@@ -25,7 +25,7 @@ def db_connection():
 # =========================
 # CONFIG MQTT
 # =========================
-MQTT_BROKER = "test.mosquitto.org"
+MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
 MQTT_TOPIC = "alvin/iot/fuel_level"
 
